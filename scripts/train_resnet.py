@@ -11,6 +11,9 @@ from PIL import Image
 from tqdm import tqdm
 import pandas as pd
 
+from scripts.Dataset import CustomImageDataset
+
+
 # Load test dataset without requiring class folders
 def load_test_images(test_path, transform):
     test_images = []

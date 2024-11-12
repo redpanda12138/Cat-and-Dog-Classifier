@@ -1,15 +1,10 @@
 # 1. SVM Implementation
 from sklearn import svm
 from sklearn.metrics import accuracy_score, confusion_matrix, ConfusionMatrixDisplay
-import numpy as np
 import os
 import matplotlib.pyplot as plt
 import joblib
 import pickle
-from PIL import Image
-import torch
-
-from scripts.Dataset import CustomImageDataset
 
 
 # Load preprocessed data
