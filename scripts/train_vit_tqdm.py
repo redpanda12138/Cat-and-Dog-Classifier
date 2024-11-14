@@ -21,17 +21,17 @@ print(f'Training ViT model with device: {device}')
 
 
 # 绘制测试结果图表
-def save_test_results(avg_test_loss, test_accuracy, output_path):
+def save_val_results(avg_test_loss, test_accuracy, output_path):
     # 创建一个图表
     fig, ax = plt.subplots(figsize=(10, 5))
 
     # 绘制测试损失和准确率
-    metrics = ['Test Loss', 'Test Accuracy']
+    metrics = ['Val Loss', 'Val Accuracy']
     values = [avg_test_loss, test_accuracy]
 
     # 绘制柱状图
     ax.bar(metrics, values, color=['skyblue', 'salmon'])
-    ax.set_title('Test Results')
+    ax.set_title('Validation Results')
     ax.set_ylabel('Values')
     ax.set_ylim(0, max(values) + 5)  # 设置 y 轴范围
 
@@ -136,7 +136,7 @@ for epoch in range(num_epochs):
     train_losses.append(epoch_loss)
 
     # Save ViT Model after each epoch
-    if epoch % 10 == 0:
+    if epoch % 10 == 0 & epoch > 0:
         model_save_path = f'../results/vit_model/vit_model_epoch_{epoch + 1}_lr_{learning_rate}.pth'
         torch.save(model.state_dict(), model_save_path)
         print(f'Model saved to {model_save_path}')
@@ -162,7 +162,7 @@ for epoch in range(num_epochs):
 
     avg_val_loss = val_loss / len(val_loader)
     val_accuracy = 100 * correct / total
-    save_test_results(avg_val_loss, val_accuracy, '../figure/vit_val_results.png')
+    save_val_results(avg_val_loss, val_accuracy, '../figure/vit_val_results.png')
     print(f"Validation Loss: {avg_val_loss:.4f}, Validation Accuracy: {val_accuracy:.2f}%")
 
     # 记录验证损失和准确率
