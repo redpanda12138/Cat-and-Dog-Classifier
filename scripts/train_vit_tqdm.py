@@ -19,21 +19,6 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f'Training ViT model with device: {device}')
 
 
-# Load test dataset without requiring class folders
-def load_test_images(test_path, transform):
-    test_images = []
-    test_labels = []
-    img_names = sorted(os.listdir(test_path))
-    for img_name in img_names:
-        img_path = os.path.join(test_path, img_name)
-        img = cv2.imread(img_path)
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        img = Image.fromarray(img)  # 将 numpy.ndarray 转换为 PIL 图像
-        if transform:
-            img = transform(img)
-        test_images.append(img)
-        test_labels.append(img_name)  # 将图像名称作为标签
-    return test_images, test_labels
 
 # 绘制测试结果图表
 def save_test_results(avg_test_loss, test_accuracy, output_path):
@@ -90,26 +75,31 @@ def collate_fn(batch):
 train_loader = DataLoader(train_dataset_vit, batch_size=4, shuffle=True, collate_fn=collate_fn)
 val_loader = DataLoader(train_dataset_vit, batch_size=4, shuffle=False, collate_fn=collate_fn)
 
-# # 测试数据集
-# test_images, test_labels = load_test_images('../data/test', transform_vit)
-# # 将数据转换为可以被 Hugging Face Dataset 使用的格式
-# test_data = [
-#     {
-#         'pixel_values': [img.numpy().tolist() for img in test_images],  # 将张量转换为列表
-#         'label': test_labels  # 假设这里使用 idx 作为标签，根据需要进行调整
-#     }
-#     for img in test_images
-# ]
-# test_dataset_vit = Dataset.from_dict(test_data)
 
 # Training parameters
-learning_rate = 1e-4
-num_epochs = 30
-config = ViTConfig.from_pretrained("google/vit-base-patch16-224-in21k", num_labels=2)  # Assuming binary classification
-model = ViTForImageClassification.from_pretrained("google/vit-base-patch16-224-in21k", config=config)
+learning_rate = 5e-4
+num_epochs = 100
+# config = ViTConfig.from_pretrained("google/vit-base-patch16-224-in21k", num_labels=2)  # Assuming binary classification
+# model = ViTForImageClassification.from_pretrained("google/vit-base-patch16-224-in21k", config=config)
+# model = model.to(device)
+
+# 使用随机初始化的 ViT 模型（非预训练）
+config = ViTConfig(num_labels=2)  # 假设是二分类任务
+model = ViTForImageClassification(config)
 model = model.to(device)
 
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+
+# 早停参数
+patience = 5
+min_delta = 0.001
+early_stop_counter = 0
+best_val_loss = float('inf')
+
+# 用于存储每个 epoch 的训练损失和验证准确率
+train_losses = []
+val_losses = []
+val_accuracies = []
 
 accumulation_steps = 4
 # Training loop with tqdm
@@ -139,12 +129,17 @@ for epoch in range(num_epochs):
             optimizer.step()
 
         running_loss += loss.item()
-        progress_bar.set_postfix(loss=running_loss / (progress_bar.n + 1))
+        progress_bar.set_postfix(loss=running_loss / (progress_bar.n + 1), learning_rate=learning_rate)
+
+    # 记录当前 epoch 的训练损失
+    epoch_loss = running_loss / len(train_loader)
+    train_losses.append(epoch_loss)
 
     # Save ViT Model after each epoch
-    model_save_path = f'../results/vit_model/vit_model_epoch_{epoch + 1}.pth'
-    torch.save(model.state_dict(), model_save_path)
-    print(f'Model saved to {model_save_path}')
+    if epoch % 10 == 0:
+        model_save_path = f'../results/vit_model/vit_model_epoch_{epoch + 1}_lr_{learning_rate}.pth'
+        torch.save(model.state_dict(), model_save_path)
+        print(f'Model saved to {model_save_path}')
 
     # Validation step
     model.eval()
@@ -170,7 +165,52 @@ for epoch in range(num_epochs):
     save_test_results(avg_val_loss, val_accuracy, '../figure/vit_val_results.png')
     print(f"Validation Loss: {avg_val_loss:.4f}, Validation Accuracy: {val_accuracy:.2f}%")
 
+    # 记录验证损失和准确率
+    val_losses.append(avg_val_loss)
+    val_accuracies.append(val_accuracy)
+
+    # 早停逻辑
+    if avg_val_loss < best_val_loss - min_delta:
+        best_val_loss = avg_val_loss
+        early_stop_counter = 0  # 重置计数器
+    else:
+        early_stop_counter += 1
+
+    if early_stop_counter >= patience:
+        print(f"Early stopping at epoch {epoch + 1}")
+        break
+
     torch.cuda.empty_cache()
     gc.collect()
+
+# 绘制训练和验证的损失、验证准确率
+epochs = range(1, num_epochs + 1)
+
+plt.figure(figsize=(15, 5))
+
+# 绘制训练损失和验证损失
+plt.subplot(1, 2, 1)
+plt.plot(epochs, train_losses, label='Training Loss', color='b', marker='o')
+plt.plot(epochs, val_losses, label='Validation Loss', color='r', marker='o')
+plt.xlabel('Epoch')
+plt.ylabel('Loss')
+plt.title('Training and Validation Loss')
+plt.legend()
+plt.grid(True)
+
+# 绘制验证准确率
+plt.subplot(1, 2, 2)
+plt.plot(epochs, val_accuracies, label='Validation Accuracy', color='g', marker='o')
+plt.xlabel('Epoch')
+plt.ylabel('Accuracy (%)')
+plt.title('Validation Accuracy')
+plt.ylim([0, 100])  # 根据准确率范围设置 y 轴范围以提高可读性
+plt.legend()
+plt.grid(True)
+
+# 保存图表
+plt.tight_layout()
+plt.savefig('training_validation_results.png')
+plt.show()
 
 print('Training complete.')
